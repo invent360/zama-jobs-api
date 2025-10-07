@@ -1,0 +1,73 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: job-processor-config
+data:
+  NATS_URL: "nats://nats-service:4222"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: job-processor
+  labels:
+    app: job-processor
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: job-processor
+  template:
+    metadata:
+      labels:
+        app: job-processor
+    spec:
+      containers:
+      - name: job-processor
+        image: katson360/zama-job-processor:latest
+        imagePullPolicy: IfNotPresent
+        envFrom:
+        - configMapRef:
+            name: job-processor-config
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "250m"
+        livenessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - ps aux | grep job-processor | grep -v grep
+          initialDelaySeconds: 10
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+      restartPolicy: Always
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: job-processor-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: job-processor
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80

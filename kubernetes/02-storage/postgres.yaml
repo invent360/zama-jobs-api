@@ -1,0 +1,166 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: storage
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: standard
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-secret
+  namespace: storage
+type: Opaque
+stringData:
+  POSTGRES_USER: postgres
+  POSTGRES_PASSWORD: postgres123
+  POSTGRES_DB: zama_jobs
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-config
+  namespace: storage
+data:
+  init.sql: |
+    -- Create databases for different services
+    CREATE DATABASE IF NOT EXISTS zama_jobs;
+    CREATE DATABASE IF NOT EXISTS kong;
+    CREATE DATABASE IF NOT EXISTS keycloak;
+
+    -- Create user for Kong
+    CREATE USER kong WITH PASSWORD 'kong123';
+    GRANT ALL PRIVILEGES ON DATABASE kong TO kong;
+
+    -- Create user for Keycloak
+    CREATE USER keycloak WITH PASSWORD 'keycloak123';
+    GRANT ALL PRIVILEGES ON DATABASE keycloak TO keycloak;
+
+    -- Create user for Zama services
+    CREATE USER zama WITH PASSWORD 'zama123';
+    GRANT ALL PRIVILEGES ON DATABASE zama_jobs TO zama;
+
+    -- Create tables for event sourcing
+    \c zama_jobs;
+
+    CREATE TABLE IF NOT EXISTS events (
+      id SERIAL PRIMARY KEY,
+      aggregate_id VARCHAR(255) NOT NULL,
+      event_type VARCHAR(100) NOT NULL,
+      event_data JSONB NOT NULL,
+      metadata JSONB,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_aggregate_id (aggregate_id),
+      INDEX idx_event_type (event_type),
+      INDEX idx_created_at (created_at)
+    );
+
+    CREATE TABLE IF NOT EXISTS job_states (
+      job_id VARCHAR(255) PRIMARY KEY,
+      tenant_id VARCHAR(255) NOT NULL,
+      status VARCHAR(50) NOT NULL,
+      job_data JSONB NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_tenant_id (tenant_id),
+      INDEX idx_status (status),
+      INDEX idx_created_at (created_at)
+    );
+
+    CREATE TABLE IF NOT EXISTS usage_events (
+      id SERIAL PRIMARY KEY,
+      tenant_id VARCHAR(255) NOT NULL,
+      job_id VARCHAR(255),
+      event_type VARCHAR(100) NOT NULL,
+      metrics JSONB NOT NULL,
+      timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_tenant_timestamp (tenant_id, timestamp)
+    );
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: storage
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:15-alpine
+        ports:
+        - containerPort: 5432
+          name: postgres
+        envFrom:
+        - secretRef:
+            name: postgres-secret
+        env:
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        volumeMounts:
+        - name: postgres-storage
+          mountPath: /var/lib/postgresql/data
+        - name: init-script
+          mountPath: /docker-entrypoint-initdb.d
+        resources:
+          requests:
+            cpu: 250m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+        livenessProbe:
+          exec:
+            command:
+            - pg_isready
+            - -U
+            - postgres
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command:
+            - pg_isready
+            - -U
+            - postgres
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: init-script
+        configMap:
+          name: postgres-config
+  volumeClaimTemplates:
+  - metadata:
+      name: postgres-storage
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 5Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: storage
+spec:
+  type: ClusterIP
+  ports:
+  - port: 5432
+    targetPort: 5432
+  selector:
+    app: postgres

@@ -1,0 +1,113 @@
+# Cilium Helm values for Zama Jobs API - Docker Desktop optimized
+
+# Disable kube-proxy replacement for Docker Desktop compatibility
+kubeProxyReplacement: false
+
+# Enable Gateway API support for modern ingress
+gatewayAPI:
+  enabled: true
+
+# L7 proxy for advanced features
+l7Proxy: true
+
+# IPAM configuration
+ipam:
+  mode: kubernetes
+
+# Use tunnel mode for Docker Desktop compatibility
+routingMode: tunnel
+
+# Enable Hubble for observability
+hubble:
+  enabled: true
+  relay:
+    enabled: true
+  ui:
+    enabled: true
+  metrics:
+    enabled:
+    - dns
+    - drop
+    - tcp
+    - flow
+    - port-distribution
+    - icmp
+    - http
+
+# Enable bandwidth manager for QoS
+bandwidthManager:
+  enabled: true
+  bbr: true
+
+# Policy enforcement
+policyEnforcementMode: "default"
+
+# Enable host firewall
+hostFirewall:
+  enabled: false  # Disabled for local development
+
+# BPF configuration
+bpf:
+  masquerade: true
+  clockProbe: true
+  preallocateMaps: true
+
+# Operator configuration
+operator:
+  replicas: 1
+  prometheus:
+    enabled: true
+    serviceMonitor:
+      enabled: false  # We'll use our own Prometheus
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# Enable agent (boolean for chart compatibility)
+agent: true
+
+# Prometheus configuration for agent
+prometheus:
+  enabled: true
+
+# MTU configuration for optimal performance
+mtu: 1450
+
+# Enable endpoint routes
+endpointRoutes:
+  enabled: true
+
+# Load balancer configuration
+loadBalancer:
+  algorithm: maglev
+  mode: hybrid
+
+# Enable encryption (optional, disabled for local dev)
+encryption:
+  enabled: false
+  type: wireguard
+
+# Debug configuration
+debug:
+  enabled: false
+
+# Resources for local development
+# Adjust these for production
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# Prometheus metrics
+prometheus:
+  enabled: true
+  port: 9962
+  serviceMonitor:
+    enabled: false

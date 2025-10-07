@@ -1,0 +1,295 @@
+# NATS JetStream configuration for Zama Jobs
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nats-config
+  namespace: messaging
+data:
+  nats.conf: |
+    # NATS Server Configuration for Zama Jobs API
+
+    # Server identification
+    server_name: $POD_NAME
+
+    # Client port
+    port: 4222
+
+    # HTTP monitoring port
+    monitor_port: 8222
+    http: 0.0.0.0:8222
+
+    # Cluster definition
+    cluster {
+      name: zama-nats-cluster
+      port: 6222
+
+      routes: [
+        nats://nats-0.nats.messaging.svc.cluster.local:6222
+        nats://nats-1.nats.messaging.svc.cluster.local:6222
+        nats://nats-2.nats.messaging.svc.cluster.local:6222
+      ]
+
+      cluster_advertise: $CLUSTER_ADVERTISE
+
+      connect_retries: 30
+    }
+
+    # JetStream configuration
+    jetstream {
+      store_dir: /data/jetstream
+      max_memory_store: 1Gi
+      max_file_store: 10Gi
+
+      # Domain for multi-tenancy
+      domain: zama
+    }
+
+    # Authorization
+    authorization {
+      users: [
+        {
+          user: admin
+          password: admin123
+          permissions: {
+            publish: ">"
+            subscribe: ">"
+          }
+        }
+        {
+          user: jobs-service
+          password: jobs123
+          permissions: {
+            publish: ["jobs.>", "events.>"]
+            subscribe: ["jobs.>", "events.>", "metrics.>"]
+          }
+        }
+        {
+          user: metering-service
+          password: metering123
+          permissions: {
+            publish: ["metrics.>", "billing.>"]
+            subscribe: ["events.>", "metrics.>"]
+          }
+        }
+        {
+          user: blockchain-service
+          password: blockchain123
+          permissions: {
+            publish: ["blockchain.>", "events.>"]
+            subscribe: ["jobs.completed.>", "blockchain.>"]
+          }
+        }
+      ]
+    }
+
+    # Logging
+    debug: false
+    trace: false
+    logtime: true
+
+    # Limits
+    max_connections: 10000
+    max_control_line: 4096
+    max_payload: 8MB
+    max_pending: 256MB
+
+    # Ping interval
+    ping_interval: "30s"
+    ping_max: 3
+
+    # Write deadline
+    write_deadline: "10s"
+
+  jetstream-init.sh: |
+    #!/bin/sh
+    # Initialize JetStream streams and consumers
+
+    # Wait for NATS to be ready
+    sleep 10
+
+    # Create streams for job events
+    nats stream add JOBS \
+      --subjects "jobs.>" \
+      --storage file \
+      --retention limits \
+      --max-age 7d \
+      --max-bytes 1GB \
+      --max-msgs 1000000 \
+      --max-msg-size 1MB \
+      --discard old \
+      --replicas 3
+
+    # Create stream for usage events
+    nats stream add USAGE \
+      --subjects "usage.>" \
+      --storage file \
+      --retention limits \
+      --max-age 30d \
+      --max-bytes 10GB \
+      --max-msgs 10000000 \
+      --max-msg-size 100KB \
+      --discard old \
+      --replicas 3
+
+    # Create stream for blockchain events
+    nats stream add BLOCKCHAIN \
+      --subjects "blockchain.>" \
+      --storage file \
+      --retention limits \
+      --max-age 90d \
+      --max-bytes 5GB \
+      --max-msgs 5000000 \
+      --max-msg-size 100KB \
+      --discard old \
+      --replicas 3
+
+    # Create consumers
+    nats consumer add JOBS job-processor \
+      --ack explicit \
+      --deliver all \
+      --durable \
+      --max-deliver 3 \
+      --wait 5s \
+      --max-ack-pending 100
+
+    nats consumer add USAGE billing-processor \
+      --ack explicit \
+      --deliver all \
+      --durable \
+      --max-deliver 3 \
+      --wait 5s \
+      --max-ack-pending 1000
+
+    nats consumer add BLOCKCHAIN confirmation-processor \
+      --ack explicit \
+      --deliver all \
+      --durable \
+      --max-deliver 3 \
+      --wait 10s \
+      --max-ack-pending 50
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: nats
+  namespace: messaging
+spec:
+  serviceName: nats
+  replicas: 3
+  selector:
+    matchLabels:
+      app: nats
+  template:
+    metadata:
+      labels:
+        app: nats
+    spec:
+      # NATS boxes require no fsgroup
+      securityContext:
+        fsGroup: null
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+      - name: nats
+        image: nats:2.10.0-alpine
+        ports:
+        - containerPort: 4222
+          name: client
+        - containerPort: 6222
+          name: cluster
+        - containerPort: 8222
+          name: monitor
+        command:
+        - nats-server
+        - --config
+        - /etc/nats-config/nats.conf
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: CLUSTER_ADVERTISE
+          value: $(POD_NAME).nats.$(POD_NAMESPACE).svc.cluster.local
+        volumeMounts:
+        - name: config
+          mountPath: /etc/nats-config
+        - name: data
+          mountPath: /data
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8222
+          initialDelaySeconds: 10
+          timeoutSeconds: 5
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8222
+          initialDelaySeconds: 5
+          timeoutSeconds: 5
+          periodSeconds: 10
+      volumes:
+      - name: config
+        configMap:
+          name: nats-config
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nats
+  namespace: messaging
+  labels:
+    app: nats
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+  - name: client
+    port: 4222
+  - name: cluster
+    port: 6222
+  - name: monitor
+    port: 8222
+  selector:
+    app: nats
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nats-client
+  namespace: messaging
+spec:
+  type: ClusterIP
+  ports:
+  - name: client
+    port: 4222
+    targetPort: 4222
+  - name: monitor
+    port: 8222
+    targetPort: 8222
+  selector:
+    app: nats

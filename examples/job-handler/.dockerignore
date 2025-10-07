@@ -1,0 +1,10 @@
+target/
+Dockerfile
+Dockerfile.standalone
+.dockerbuild/
+.git/
+.gitignore
+*.swp
+*.swo
+*~
+.DS_Store

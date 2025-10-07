@@ -1,0 +1,51 @@
+# Minimal Cilium configuration for Docker Desktop
+# Optimized for local development
+
+# Basic CNI configuration
+cluster:
+  name: docker-desktop
+
+# Disable advanced features that may cause issues on Docker Desktop
+kubeProxyReplacement: false
+l7Proxy: false
+
+# Basic IPAM
+ipam:
+  mode: kubernetes
+
+# Minimal Hubble for basic observability
+hubble:
+  enabled: true
+  relay:
+    enabled: false
+  ui:
+    enabled: false
+
+# Disable advanced networking features
+hostFirewall:
+  enabled: false
+
+gatewayAPI:
+  enabled: false
+
+encryption:
+  enabled: false
+
+bandwidthManager:
+  enabled: false
+
+# Simple agent configuration
+agent: true
+
+# Basic operator configuration
+operator:
+  replicas: 1
+
+# Conservative resource limits for local dev
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi

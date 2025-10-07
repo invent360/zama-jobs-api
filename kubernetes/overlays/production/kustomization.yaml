@@ -1,0 +1,63 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: zama-jobs-prod
+
+bases:
+  - ../../base
+
+namePrefix: prod-
+nameSuffix: ""
+
+commonLabels:
+  environment: production
+
+replicas:
+  - name: job-handler
+    count: 3
+  - name: job-processor
+    count: 5
+  - name: nats
+    count: 3
+
+patches:
+  - target:
+      kind: Deployment
+      name: job-handler
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 3
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: "256Mi"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: "512Mi"
+  - target:
+      kind: Deployment
+      name: job-processor
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 5
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: "128Mi"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: "256Mi"
+
+configMapGenerator:
+  - name: job-handler-config
+    behavior: merge
+    literals:
+      - RUST_LOG=warn
+  - name: job-processor-config
+    behavior: merge
+    literals:
+      - LOG_LEVEL=warn
+
+resources:
+  - namespace.yaml
+  - ingress.yaml

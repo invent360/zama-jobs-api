@@ -1,0 +1,147 @@
+# Kong Gateway Helm values for Zama Jobs API
+
+image:
+  repository: kong
+  tag: "3.4"
+  pullPolicy: IfNotPresent
+
+env:
+  database: postgres
+  pg_host: postgres.storage.svc.cluster.local
+  pg_port: 5432
+  pg_database: kong
+  pg_user: kong
+  pg_password: kong123
+
+  # Enable plugins
+  plugins: bundled,oidc
+
+  # Admin API
+  admin_listen: "0.0.0.0:8001"
+  admin_gui_listen: "0.0.0.0:8002"
+
+  # Proxy settings
+  proxy_listen: "0.0.0.0:8000"
+
+  # Logging
+  log_level: info
+
+  # Performance tuning
+  nginx_worker_processes: auto
+  mem_cache_size: 128m
+
+  # Database settings
+  pg_max_concurrent_queries: 10
+  pg_semaphore_timeout: 60000
+
+admin:
+  enabled: true
+  type: ClusterIP
+  http:
+    enabled: true
+    servicePort: 8001
+    containerPort: 8001
+
+proxy:
+  enabled: true
+  type: ClusterIP
+  http:
+    enabled: true
+    servicePort: 80
+    containerPort: 8000
+  tls:
+    enabled: false
+
+ingressController:
+  enabled: true
+  installCRDs: false
+
+  env:
+    publish_service: kong/kong-proxy
+    kong_admin_token: kong-admin-token
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+postgresql:
+  enabled: false  # Using external PostgreSQL
+
+migrations:
+  enabled: true
+
+  preUpgrade:
+    enabled: true
+
+  postUpgrade:
+    enabled: true
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+    - weight: 100
+      podAffinityTerm:
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/name: kong
+        topologyKey: kubernetes.io/hostname
+
+# Service Monitor for Prometheus
+serviceMonitor:
+  enabled: false
+
+# Custom plugins can be installed here
+plugins: {}
+
+# Enterprise features (if using Kong Enterprise)
+enterprise:
+  enabled: false
+
+# Manager configuration (Kong Manager UI)
+manager:
+  enabled: false
+
+# Portal configuration (Developer Portal)
+portal:
+  enabled: false
+
+# Portal API configuration
+portalapi:
+  enabled: false
+
+# Cluster configuration
+cluster:
+  enabled: false
+
+# Status configuration
+status:
+  enabled: true
+  http:
+    enabled: true
+    containerPort: 8100
+
+# Telemetry
+telemetry:
+  enabled: false

@@ -1,0 +1,21 @@
+syntax = "proto3";
+import "google/protobuf/empty.proto";
+import "v1/models/job_model.proto";
+
+
+package jobs;
+
+service JobService {
+    // Public API for job submission
+    rpc SubmitJob(SubmitJobRequest) returns (SubmitJobResponse);
+
+    // Job management endpoints
+    rpc GetJob(GetJobRequest) returns (GetJobResponse);
+    rpc ListJobs(ListJobsRequest) returns (ListJobsResponse);
+    rpc CancelJob(JobIdRequest) returns (google.protobuf.Empty);
+
+    // WebSocket endpoint for job completion notifications
+    // This is a bidirectional streaming RPC that clients can use to receive job updates
+    rpc StreamJobUpdates(stream JobIdRequest) returns (stream JobCompletionEvent);
+}
+

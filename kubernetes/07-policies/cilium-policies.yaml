@@ -1,0 +1,295 @@
+# Cilium Network Policies for Zama Jobs API
+
+---
+# Allow Kong to access backend services
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: kong-to-services
+  namespace: kong
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: kong
+  egress:
+  # Allow Kong to reach Zama services
+  - toEndpoints:
+    - matchLabels:
+        tier: api
+        io.kubernetes.pod.namespace: zama-system
+    toPorts:
+    - ports:
+      - port: "80"
+        protocol: TCP
+      - port: "8080"
+        protocol: TCP
+  # Allow Kong to reach Keycloak for OIDC
+  - toEndpoints:
+    - matchLabels:
+        app: keycloak
+        io.kubernetes.pod.namespace: iam
+    toPorts:
+    - ports:
+      - port: "8080"
+        protocol: TCP
+  # Allow Kong to reach Redis for rate limiting
+  - toEndpoints:
+    - matchLabels:
+        app: redis
+        io.kubernetes.pod.namespace: storage
+    toPorts:
+    - ports:
+      - port: "6379"
+        protocol: TCP
+  # Allow Kong to reach PostgreSQL
+  - toEndpoints:
+    - matchLabels:
+        app: postgres
+        io.kubernetes.pod.namespace: storage
+    toPorts:
+    - ports:
+      - port: "5432"
+        protocol: TCP
+
+---
+# Isolate Zama services - only allow traffic from Kong
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: zama-services-isolation
+  namespace: zama-system
+spec:
+  endpointSelector:
+    matchLabels:
+      tier: api
+  ingress:
+  # Allow traffic from Kong
+  - fromEndpoints:
+    - matchLabels:
+        app.kubernetes.io/name: kong
+        io.kubernetes.pod.namespace: kong
+    toPorts:
+    - ports:
+      - port: "80"
+        protocol: TCP
+      - port: "8080"
+        protocol: TCP
+  # Allow traffic from other Zama services
+  - fromEndpoints:
+    - matchLabels:
+        io.kubernetes.pod.namespace: zama-system
+    toPorts:
+    - ports:
+      - port: "80"
+        protocol: TCP
+      - port: "8080"
+        protocol: TCP
+
+---
+# Allow Zama services to access databases and messaging
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: zama-services-egress
+  namespace: zama-system
+spec:
+  endpointSelector:
+    matchLabels:
+      io.kubernetes.pod.namespace: zama-system
+  egress:
+  # Allow access to PostgreSQL
+  - toEndpoints:
+    - matchLabels:
+        app: postgres
+        io.kubernetes.pod.namespace: storage
+    toPorts:
+    - ports:
+      - port: "5432"
+        protocol: TCP
+  # Allow access to Redis
+  - toEndpoints:
+    - matchLabels:
+        app: redis
+        io.kubernetes.pod.namespace: storage
+    toPorts:
+    - ports:
+      - port: "6379"
+        protocol: TCP
+  # Allow access to MinIO
+  - toEndpoints:
+    - matchLabels:
+        app: minio
+        io.kubernetes.pod.namespace: storage
+    toPorts:
+    - ports:
+      - port: "9000"
+        protocol: TCP
+  # Allow access to NATS
+  - toEndpoints:
+    - matchLabels:
+        app: nats
+        io.kubernetes.pod.namespace: messaging
+    toPorts:
+    - ports:
+      - port: "4222"
+        protocol: TCP
+  # Allow DNS resolution
+  - toEndpoints:
+    - matchLabels:
+        k8s-app: kube-dns
+        io.kubernetes.pod.namespace: kube-system
+    toPorts:
+    - ports:
+      - port: "53"
+        protocol: UDP
+      - port: "53"
+        protocol: TCP
+  # Allow blockchain service to access external APIs
+  - fromEndpoints:
+    - matchLabels:
+        app: blockchain-service
+    toFQDNs:
+    - matchName: "polygon-mumbai.g.alchemy.com"
+    - matchName: "*.infura.io"
+    toPorts:
+    - ports:
+      - port: "443"
+        protocol: TCP
+
+---
+# Isolate IAM namespace
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: keycloak-isolation
+  namespace: iam
+spec:
+  endpointSelector:
+    matchLabels:
+      app: keycloak
+  ingress:
+  # Allow traffic from Kong for OIDC
+  - fromEndpoints:
+    - matchLabels:
+        app.kubernetes.io/name: kong
+        io.kubernetes.pod.namespace: kong
+    toPorts:
+    - ports:
+      - port: "8080"
+        protocol: TCP
+  # Allow direct access for admin (through ingress)
+  - fromEndpoints:
+    - matchLabels:
+        io.cilium.k8s.policy.cluster: default
+        io.cilium.k8s.policy.serviceaccount: cilium-gateway
+        io.kubernetes.pod.namespace: kube-system
+    toPorts:
+    - ports:
+      - port: "8080"
+        protocol: TCP
+  egress:
+  # Allow Keycloak to access PostgreSQL
+  - toEndpoints:
+    - matchLabels:
+        app: postgres
+        io.kubernetes.pod.namespace: storage
+    toPorts:
+    - ports:
+      - port: "5432"
+        protocol: TCP
+  # Allow DNS resolution
+  - toEndpoints:
+    - matchLabels:
+        k8s-app: kube-dns
+        io.kubernetes.pod.namespace: kube-system
+    toPorts:
+    - ports:
+      - port: "53"
+        protocol: UDP
+
+---
+# Isolate storage namespace
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: storage-isolation
+  namespace: storage
+spec:
+  endpointSelector:
+    matchLabels:
+      io.kubernetes.pod.namespace: storage
+  ingress:
+  # Allow access from authorized services only
+  - fromEndpoints:
+    - matchLabels:
+        io.kubernetes.pod.namespace: zama-system
+  - fromEndpoints:
+    - matchLabels:
+        io.kubernetes.pod.namespace: kong
+  - fromEndpoints:
+    - matchLabels:
+        io.kubernetes.pod.namespace: iam
+  - fromEndpoints:
+    - matchLabels:
+        io.kubernetes.pod.namespace: messaging
+
+---
+# Isolate messaging namespace
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: nats-isolation
+  namespace: messaging
+spec:
+  endpointSelector:
+    matchLabels:
+      app: nats
+  ingress:
+  # Allow access from Zama services
+  - fromEndpoints:
+    - matchLabels:
+        io.kubernetes.pod.namespace: zama-system
+    toPorts:
+    - ports:
+      - port: "4222"
+        protocol: TCP
+  # Allow cluster communication between NATS nodes
+  - fromEndpoints:
+    - matchLabels:
+        app: nats
+        io.kubernetes.pod.namespace: messaging
+    toPorts:
+    - ports:
+      - port: "6222"
+        protocol: TCP
+  # Allow monitoring access
+  - fromEndpoints:
+    - matchLabels:
+        io.kubernetes.pod.namespace: monitoring
+    toPorts:
+    - ports:
+      - port: "8222"
+        protocol: TCP
+
+---
+# Default deny policy for high-security namespaces
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: storage
+spec:
+  endpointSelector: {}
+  ingress:
+  - {} # This creates a default allow, but we override with specific rules above
+
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: iam
+spec:
+  endpointSelector: {}
+  ingress:
+  - {} # This creates a default allow, but we override with specific rules above

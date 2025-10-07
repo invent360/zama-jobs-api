@@ -1,0 +1,125 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: nats-service
+  labels:
+    app: nats
+spec:
+  selector:
+    app: nats
+  clusterIP: None
+  ports:
+    - name: client
+      port: 4222
+      targetPort: 4222
+    - name: cluster
+      port: 6222
+      targetPort: 6222
+    - name: monitoring
+      port: 8222
+      targetPort: 8222
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nats-config
+data:
+  nats.conf: |
+    pid_file: "/var/run/nats/nats.pid"
+    http: 8222
+
+    # JetStream configuration
+    jetstream {
+      store_dir: /data/jetstream
+      max_mem: 1G
+      max_file: 10G
+    }
+
+    # Clustering configuration
+    cluster {
+      name: nats-cluster
+      listen: 0.0.0.0:6222
+
+      routes: [
+        nats://nats-0.nats-service:6222
+        nats://nats-1.nats-service:6222
+        nats://nats-2.nats-service:6222
+      ]
+
+      connect_retries: 30
+    }
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: nats
+  labels:
+    app: nats
+spec:
+  serviceName: nats-service
+  replicas: 3
+  selector:
+    matchLabels:
+      app: nats
+  template:
+    metadata:
+      labels:
+        app: nats
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+      - name: nats
+        image: nats:2.10-alpine
+        ports:
+        - containerPort: 4222
+          name: client
+        - containerPort: 6222
+          name: cluster
+        - containerPort: 8222
+          name: monitoring
+        command:
+        - /nats-server
+        - -c
+        - /etc/nats/nats.conf
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8222
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8222
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+        volumeMounts:
+        - name: config
+          mountPath: /etc/nats
+        - name: data
+          mountPath: /data
+        - name: pid
+          mountPath: /var/run/nats
+      volumes:
+      - name: config
+        configMap:
+          name: nats-config
+      - name: pid
+        emptyDir: {}
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 10Gi

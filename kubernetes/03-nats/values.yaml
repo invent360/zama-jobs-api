@@ -1,0 +1,44 @@
+# NATS Configuration for Zama Jobs API
+# Simplified for Docker Desktop single-node deployment
+
+# Basic configuration
+config:
+  # Enable JetStream for message persistence
+  jetstream:
+    enabled: true
+
+  # Enable monitoring
+  http_port: 8222
+
+# NATS server settings
+nats:
+  image:
+    repository: nats
+    tag: "2.10.12-alpine"
+    pullPolicy: IfNotPresent
+
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+# Single replica for Docker Desktop
+replicaCount: 1
+
+# Storage settings
+persistence:
+  enabled: true
+  size: 5Gi
+  storageClass: hostpath
+
+# Enable box container for debugging
+natsBox:
+  enabled: true
+
+# Disable cluster mode for single node
+cluster:
+  enabled: false
+  replicas: 1

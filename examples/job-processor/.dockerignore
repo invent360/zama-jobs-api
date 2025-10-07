@@ -1,0 +1,16 @@
+job-processor
+job-processor-*
+*.exe
+*.test
+*.out
+vendor/
+.git/
+.gitignore
+Dockerfile
+docker-compose.yml
+*.swp
+*.swo
+*~
+.DS_Store
+.idea/
+.vscode/

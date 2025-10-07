@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: zama-jobs-dev
+  labels:
+    name: zama-jobs-dev
+    environment: development

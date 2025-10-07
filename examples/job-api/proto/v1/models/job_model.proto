@@ -1,0 +1,98 @@
+syntax = "proto3";
+import "google/protobuf/empty.proto";
+
+package jobs;
+
+enum JobStatus {
+  JOB_STATUS_UNKNOWN = 0;
+  JOB_STATUS_PENDING = 1;
+  JOB_STATUS_PROCESSING = 2;
+  JOB_STATUS_COMPLETED = 3;
+  JOB_STATUS_FAILED = 4;
+}
+
+message Job {
+  optional string id = 10;
+  string name = 20;
+  optional int64 created_at = 30;
+  optional int64 processing_time = 40;
+  optional int64 completed_at = 50;
+  JobStatus status = 60;
+  optional string result = 70;
+  optional string error = 80;
+}
+
+message JobnameRequest {
+  string jobname = 10;
+}
+
+message CreateJobRequest{
+  Job job = 10;
+}
+
+message CreateJobResponse {
+  Job job = 10;
+}
+
+message GetJobRequest {
+  optional string job_id = 10;
+  optional string name = 20;
+}
+
+message GetJobResponse {
+  Job job = 10;
+}
+
+message UpdateJobRequest {
+  Job job = 10;
+}
+
+message UpdateJobResponse{
+  Job job = 10;
+}
+
+message DeleteJobRequest {
+  string job_id = 10;
+}
+
+message DeleteJobResponse {
+  bool success = 10;
+}
+
+message ListJobsByJobIdRequest{
+  string unit_id = 10;
+}
+
+message ListJobsRequest{
+  optional string job_id = 10;
+  optional string jobname = 20;
+  optional string email = 30;
+}
+
+message ListJobsResponse{
+  repeated Job jobs = 10;
+}
+
+message JobIdRequest {
+  string job_id = 10;
+}
+
+message JobCompletionEvent {
+  string job_id = 10;
+  JobStatus status = 20;
+  optional string result = 30;
+  optional string error = 40;
+  int64 completed_at = 50;
+}
+
+message SubmitJobRequest {
+  string name = 10;
+  string payload = 20;
+}
+
+message SubmitJobResponse {
+  string job_id = 10;
+  JobStatus status = 20;
+}
+
+

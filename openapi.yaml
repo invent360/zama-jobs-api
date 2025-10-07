@@ -1,0 +1,520 @@
+openapi: 3.1.0
+info:
+  title: Zama Jobs API
+  version: 1.0.0
+  description: Asynchronous job processing with blockchain finality
+
+servers:
+  - url: https://api.zama.ai/v1
+
+security:
+  - oauth2: [ ]
+
+paths:
+  /jobs:
+    post:
+      summary: Submit a new job
+      operationId: submitJob
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ jobType, parameters ]
+              properties:
+                jobType:
+                  type: string
+                  enum: [ compute_heavy, data_processing, ml_inference ]
+                parameters:
+                  type: object
+                  additionalProperties: true
+                priority:
+                  type: integer
+                  minimum: 0
+                  maximum: 10
+                  default: 5
+                timeoutSeconds:
+                  type: integer
+                  minimum: 60
+                  maximum: 86400
+                  default: 3600
+                callbackUrl:
+                  type: string
+                  format: uri
+                  description: Webhook URL for job completion notification
+                metadata:
+                  type: object
+            examples:
+              compute:
+                value:
+                  jobType: compute_heavy
+                  parameters:
+                    algorithm: matrix_multiply
+                    dimensions: 1024
+                  timeoutSeconds: 3600
+      responses:
+        '202':
+          description: Job accepted
+          headers:
+            Location:
+              schema:
+                type: string
+              description: URL to job resource
+            X-RateLimit-Limit:
+              schema:
+                type: integer
+            X-RateLimit-Remaining:
+              schema:
+                type: integer
+            X-RateLimit-Reset:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobId:
+                    type: string
+                  status:
+                    type: string
+                    enum: [ pending ]
+                  submittedAt:
+                    type: string
+                    format: date-time
+                  estimatedCompletion:
+                    type: string
+                    format: date-time
+                  links:
+                    type: object
+                    properties:
+                      self:
+                        type: string
+                      status:
+                        type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '402':
+          $ref: '#/components/responses/PaymentRequired'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+    get:
+      summary: List jobs for the tenant
+      operationId: listJobs
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [ pending, processing, completed, failed, confirmed, cancelled ]
+          description: Filter by job status
+        - name: jobType
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [ compute_heavy, data_processing, ml_inference ]
+          description: Filter by job type
+        - name: fromDate
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Filter jobs created after this date
+        - name: toDate
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Filter jobs created before this date
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          description: Number of results per page
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: Offset for pagination
+        - name: sortBy
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [ created_at, updated_at, status ]
+            default: created_at
+          description: Field to sort by
+        - name: sortOrder
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [ asc, desc ]
+            default: desc
+          description: Sort order
+      responses:
+        '200':
+          description: List of jobs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobs:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Job'
+                  pagination:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                        description: Total number of jobs
+                      limit:
+                        type: integer
+                        description: Results per page
+                      offset:
+                        type: integer
+                        description: Current offset
+                      hasMore:
+                        type: boolean
+                        description: Whether more results exist
+                  links:
+                    type: object
+                    properties:
+                      next:
+                        type: string
+                        format: uri
+                        description: URL for next page
+                      previous:
+                        type: string
+                        format: uri
+                        description: URL for previous page
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /jobs/{jobId}:
+    get:
+      summary: Get job details
+      operationId: getJob
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Job details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /jobs/{jobId}/status:
+    get:
+      summary: Get job status (lightweight)
+      operationId: getJobStatus
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Job status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobId:
+                    type: string
+                  status:
+                    type: string
+                    enum: [ pending, processing, completed, failed, confirmed, cancelled ]
+                  progressPercent:
+                    type: integer
+                  updatedAt:
+                    type: string
+                    format: date-time
+
+  /jobs/{jobId}/cancel:
+    post:
+      summary: Request job cancellation
+      operationId: cancelJob
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '202':
+          description: Cancellation accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobId:
+                    type: string
+                  status:
+                    type: string
+                    enum: [ cancellation_requested ]
+        '409':
+          description: Cannot cancel (already completed/confirmed)
+
+  /jobs/subscribe:
+    get:
+      summary: WebSocket endpoint for real-time job updates
+      operationId: subscribeToJobs
+      description: |
+        Establishes a WebSocket connection for real-time job status updates.
+        Client sends job IDs to subscribe to, receives updates when job status changes.
+
+        Connection URL: wss://api.zama.ai/v1/jobs/subscribe
+
+        Client -> Server: {"action": "subscribe", "jobIds": ["job_123", "job_456"]}
+        Server -> Client: {"jobId": "job_123", "status": "processing", "timestamp": 1234567890}
+        Server -> Client: {"jobId": "job_123", "status": "completed", "result": {...}, "timestamp": 1234567891}
+      parameters:
+        - name: Authorization
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Bearer token for authentication
+      responses:
+        '101':
+          description: Switching Protocols - WebSocket connection established
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '426':
+          description: Upgrade Required - Client must upgrade to WebSocket
+
+components:
+  securitySchemes:
+    oauth2:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: https://auth.zama.ai/realms/zama/protocol/openid-connect/token
+          scopes:
+            jobs:submit: Submit jobs
+            jobs:read: Read jobs
+            jobs:cancel: Cancel jobs
+
+  schemas:
+    Job:
+      type: object
+      properties:
+        jobId:
+          type: string
+        status:
+          type: string
+          enum: [ pending, processing, completed, failed, confirmed, cancelled ]
+        jobType:
+          type: string
+        submittedAt:
+          type: string
+          format: date-time
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+        blockchainConfirmation:
+          type: object
+          properties:
+            txHash:
+              type: string
+            blockNumber:
+              type: integer
+            confirmedAt:
+              type: string
+              format: date-time
+        resultUrl:
+          type: string
+          format: uri
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+        metadata:
+          type: object
+        links:
+          type: object
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+    PaymentRequired:
+      description: Payment required - quota exceeded
+      headers:
+        X-ComputeUnits-Limit:
+          schema:
+            type: integer
+        X-ComputeUnits-Used:
+          schema:
+            type: integer
+        X-ComputeUnits-Overage-Rate:
+          schema:
+            type: number
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/ProblemDetail'
+              - type: object
+                properties:
+                  quota_details:
+                    type: object
+                    properties:
+                      limit:
+                        type: integer
+                      used:
+                        type: integer
+                      overage_enabled:
+                        type: boolean
+                      upgrade_url:
+                        type: string
+                        format: uri
+
+    ValidationError:
+      description: Validation error
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+    RateLimitExceeded:
+      description: Rate limit exceeded
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+    NotFound:
+      description: Not found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+    Forbidden:
+      description: Forbidden - insufficient permissions
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+    ServiceUnavailable:
+      description: Service temporarily unavailable
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+
+    ProblemDetail:
+      type: object
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+        trace_id:
+          type: string
+          format: uuid
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              message:
+                type: string
+
+  webhooks:
+
+  webhooks:

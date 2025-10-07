@@ -1,0 +1,106 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: metering-config
+  namespace: zama-system
+data:
+  config.yaml: |
+    server:
+      port: 8080
+
+    database:
+      host: postgres.storage.svc.cluster.local
+      port: 5432
+      database: zama_jobs
+      username: zama
+      password: zama123
+
+    nats:
+      url: nats://metering-service:metering123@nats-client.messaging.svc.cluster.local:4222
+
+    billing:
+      rates:
+        compute_unit: 0.00001  # $0.00001 per compute unit
+        storage_gb_hour: 0.0001389  # $0.10/GB/month
+        network_gb: 0.09  # $0.09/GB egress
+        blockchain_confirmation: 0.01  # $0.01 per confirmation
+
+      aggregation:
+        window: hourly
+        batch_size: 1000
+
+    metrics:
+      retention_days: 90
+      export_interval: 5m
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: metering-service
+  namespace: zama-system
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: metering-service
+      tier: metering
+  template:
+    metadata:
+      labels:
+        app: metering-service
+        tier: metering
+    spec:
+      containers:
+      - name: service
+        image: zama/metering-service:latest
+        ports:
+        - containerPort: 8080
+          name: http
+        - containerPort: 9090
+          name: metrics
+        env:
+        - name: CONFIG_PATH
+          value: /etc/config/config.yaml
+        volumeMounts:
+        - name: config
+          mountPath: /etc/config
+        resources:
+          requests:
+            cpu: 250m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: config
+        configMap:
+          name: metering-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: metering-service
+  namespace: zama-system
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: 8080
+    name: http
+  - port: 9090
+    targetPort: 9090
+    name: metrics
+  selector:
+    app: metering-service

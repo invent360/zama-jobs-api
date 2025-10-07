@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: zama-jobs-prod
+  labels:
+    name: zama-jobs-prod
+    environment: production

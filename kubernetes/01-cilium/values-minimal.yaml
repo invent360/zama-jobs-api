@@ -1,0 +1,24 @@
+# Absolute minimal Cilium configuration for Docker Desktop
+kubeProxyReplacement: false
+
+# Disable everything except basic CNI
+hubble:
+  enabled: false
+gatewayAPI:
+  enabled: false
+l7Proxy: false
+hostFirewall:
+  enabled: false
+encryption:
+  enabled: false
+bandwidthManager:
+  enabled: false
+
+# Simple resources
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi
