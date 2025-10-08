@@ -3252,20 +3252,20 @@ If I had more time, I would have spent it:
 - Designed an example of an eBPF filter for enforcing/regulating traffic entering the cluster via the Ingress Controller
 - Completing the end-to-end solution to at least get it running locally on minikube/Docker desktop 
 
-Claude AI was used in:
-- Creating kubernetes deployment templates for the various component of the system
+Claude AI was used for:
+- Creating Kubernetes deployment templates for the various components of the system
 - Generating the OpenAPI specification
 - Creating implementation stubs for the job handler and processor
-- Reviewing and evaluating the overall design, giving possible grades and areas to improve
+- Reviewing and evaluating the overall design, providing possible grades and areas for improvement
 
 What worked well:
 - Quick templating & stub creation
 - API spec generation
 - Proofreading & correction
-- Review & assisting
+- Review & assistance
 
-What didn't work well
-- Precision: AI as good as they appear to be, only serve the purpose of assisting, not creating end-to-end solutions. I find myself constantly making corrections and precision to get exactly what I wanted.
-- Privacy: Exposing an entire folder to an AI agent meaning exposing everything including environment variables & secrets
+What didn't work well:
+- Precision: AI, as good as it appears to be, only serves the purpose of assisting, not creating end-to-end solutions. I found myself constantly making corrections and adjustments to get exactly what I wanted.
+- Privacy: Exposing an entire folder to an AI agent means exposing everything, including environment variables & secrets
 
 [Back to Top](#table-of-contents)
